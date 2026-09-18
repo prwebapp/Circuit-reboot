@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>REBOOT: DEEP SPACE 9 - Cybernetic Circuit Repair</title>
+    
+    <!-- PWA & Mobile Icons Meta -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#06b6d4">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Reboot DS9">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Orbitron:wght@600;800;900&family=Inter:wght@400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #030712;
+            color: #f1f5f9;
+            touch-action: manipulation;
+        }
+
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .font-code {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* Container enforcing crisp square canvas rendering */
+        .canvas-aspect-container {
+            width: 100%;
+            max-width: min(85vw, 400px);
+            aspect-ratio: 1 / 1;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        #game-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.9), 0 0 20px rgba(6, 182, 212, 0.2);
+        }
+
+        /* CRT Terminal Scanlines & Glows */
+        .terminal-scanline {
+            background: linear-gradient(
+                to bottom,
+                rgba(255, 255, 255, 0),
+                rgba(255, 255, 255, 0) 50%,
+                rgba(0, 0, 0, 0.3) 50%,
+                rgba(0, 0, 0, 0.3)
+            );
+            background-size: 100% 4px;
+        }
+
+        .glow-cyan {
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.7);
+        }
+        .glow-emerald {
+            text-shadow: 0 0 10px rgba(34, 197, 94, 0.7);
+        }
+        .glow-amber {
+            text-shadow: 0 0 10px rgba(245, 158, 11, 0.7);
+        }
+
+        /* Interactive UI Transitions */
+        .btn-sci-fi {
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn-sci-fi:active {
+            transform: scale(0.96);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-2 sm:p-4 select-none overflow-x-hidden terminal-scanline">
+
+    <!-- Top Navigation & Story Header -->
+    <div class="max-w-xl mx-auto w-full flex flex-col gap-2.5 sm:gap-3.5 my-auto">
+        <header class="bg-slate-900/90 border border-cyan-500/30 p-3 rounded-xl shadow-xl flex items-center justify-between backdrop-blur">
+            <div class="flex items-center gap-2.5">
+                <div class="w-10 h-10 rounded-lg bg-cyan-950 border border-cyan-500/50 flex items-center justify-center text-cyan-400 text-xl font-black font-orbitron shadow-md shadow-cyan-500/20">
+                    ⚙️
+                </div>
+                <div>
+                    <h1 class="text-sm sm:text-base font-black font-orbitron text-cyan-400 tracking-wider glow-cyan flex items-center gap-1.5">
+                        REBOOT: DEEP SPACE 9
+                    </h1>
+                    <p id="ship-status-sub" class="text-[10px] sm:text-xs text-slate-400 font-medium">SS Prometheus • Repair Subsystem</p>
+                </div>
+            </div>
+
+            <!-- Header Action Controls -->
+            <div class="flex items-center gap-1.5">
+                <button id="mute-btn" title="Audio Mute Toggle" class="btn-sci-fi w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-sm sm:text-base text-slate-300">
+                    🔊
+                </button>
+                <button id="solve-btn" title="Bypass Circuit (Solve)" class="btn-sci-fi bg-indigo-600/90 hover:bg-indigo-500 text-white font-bold text-xs px-2.5 py-1.5 rounded-lg border border-indigo-400/30 flex items-center gap-1 shadow-md shadow-indigo-600/20 font-code">
+                    💡 <span class="hidden sm:inline">Bypass</span>
+                </button>
+                <button id="restart-btn" title="Reset Grid" class="btn-sci-fi w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-sm sm:text-base text-slate-300">
+                    🔄
+                </button>
+            </div>
+        </header>
+
+        <!-- Terminal Dialogue Box (Alex Vance & Ship AI Updates) -->
+        <div class="bg-slate-900/90 border border-slate-800 p-2.5 sm:p-3 rounded-xl shadow-lg flex items-start gap-2.5">
+            <div class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-700 flex-shrink-0 flex items-center justify-center text-xl shadow-inner relative overflow-hidden">
+                <span id="avatar-icon">👨‍🔧</span>
+                <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-slate-900 animate-pulse"></span>
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex justify-between items-center mb-0.5">
+                    <span id="speaker-name" class="text-[10px] sm:text-xs font-bold text-cyan-400 font-code uppercase">Alex Vance • Chief Engineer</span>
+                    <span id="stage-badge" class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-orbitron">STAGE 1/5</span>
+                </div>
+                <p id="terminal-dialogue" class="text-xs sm:text-xs text-slate-300 font-code leading-tight">
+                    "EMP blast fried our main relays! I need to re-route primary power to bring the cockpit HUD online!"
+                </p>
+            </div>
+        </div>
+
+        <!-- Real-Time Telemetry HUD -->
+        <div class="grid grid-cols-4 gap-1.5 text-center font-code">
+            <div class="bg-slate-900/80 p-2 rounded-lg border border-slate-800/80 flex flex-col justify-center">
+                <span class="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Grid Size</span>
+                <select id="grid-size-select" class="bg-transparent text-xs font-bold text-cyan-400 text-center focus:outline-none cursor-pointer mt-0.5">
+                    <option value="4" class="bg-slate-900 text-slate-200">4x4 Standard</option>
+                    <option value="6" selected class="bg-slate-900 text-slate-200">6x6 Advanced</option>
+                    <option value="8" class="bg-slate-900 text-slate-200">8x8 Complex</option>
+                </select>
+            </div>
+            <div class="bg-slate-900/80 p-2 rounded-lg border border-slate-800/80 flex flex-col justify-center">
+                <span class="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Moves</span>
+                <span id="stat-moves" class="text-xs font-bold text-slate-100 mt-0.5">0</span>
+            </div>
+            <div class="bg-slate-900/80 p-2 rounded-lg border border-slate-800/80 flex flex-col justify-center">
+                <span class="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Current</span>
+                <span id="stat-current" class="text-xs font-bold text-cyan-400 mt-0.5">0.0 mA</span>
+            </div>
+            <div id="status-card" class="bg-slate-900/80 p-2 rounded-lg border border-slate-800/80 flex flex-col justify-center items-center">
+                <span class="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">System</span>
+                <span id="stat-status" class="text-xs font-bold text-rose-400 mt-0.5 flex items-center gap-1">
+                    <span id="status-dot" class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> OFFLINE
+                </span>
+            </div>
+        </div>
+
+        <!-- Interactive Circuit Board Canvas Frame -->
+        <main class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 sm:p-3 shadow-2xl flex flex-col items-center justify-center relative">
+            <div class="canvas-aspect-container">
+                <canvas id="game-canvas" class="cursor-pointer touch-none"></canvas>
+            </div>
+            <div class="w-full mt-2 flex justify-between items-center text-[10px] text-slate-400 font-code px-1">
+                <span>⚡ Target Subsystem: <strong id="target-subsystem-name" class="text-cyan-300">Cockpit HUD</strong></span>
+                <span>Tap tile to rotate</span>
+            </div>
+        </main>
+    </div>
+
+    <!-- Stage Victory & Narrative Modal -->
+    <div id="victory-modal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-cyan-500/40 rounded-xl p-5 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-3.5">
+            <div id="modal-subsystem-icon" class="w-14 h-14 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 text-3xl animate-bounce shadow-lg shadow-cyan-500/20">
+                ⚡
+            </div>
+            <div>
+                <h2 id="modal-title" class="text-xl font-black font-orbitron text-white glow-cyan">Subsystem Online!</h2>
+                <p id="modal-desc" class="text-xs text-slate-300 mt-1 font-code">Emergency communications successfully powered.</p>
+            </div>
+            
+            <div class="w-full bg-slate-800/80 rounded-lg p-3 font-code text-left text-xs space-y-1.5 border border-slate-700">
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Total Rotations:</span>
+                    <span id="modal-moves" class="text-slate-100 font-bold">0</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Loop Resistance:</span>
+                    <span id="modal-res" class="text-amber-400 font-bold">150 Ω</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Calculated Current:</span>
+                    <span id="modal-curr" class="text-cyan-400 font-bold">33.3 mA</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Subsystem Status:</span>
+                    <span class="text-emerald-400 font-bold flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> ONLINE
+                    </span>
+                </div>
+            </div>
+
+            <button id="next-btn" class="btn-sci-fi w-full py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg transition duration-150 shadow-lg shadow-cyan-600/30 text-xs font-orbitron tracking-wider">
+                PROCEED TO NEXT STAGE ➔
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * REBOOT: DEEP SPACE 9 - GAME ENGINE & NARRATIVE LOGIC
+         */
+
+        // Direction Indices
+        const TOP = 0, RIGHT = 1, BOTTOM = 2, LEFT = 3;
+        const OPPOSITE = [BOTTOM, LEFT, TOP, RIGHT];
+        const OFFSETS = [
+            [0, -1], // TOP
+            [1, 0],  // RIGHT
+            [0, 1],  // BOTTOM
+            [-1, 0]  // LEFT
+        ];
+
+        // Component Base Profiles
+        const TILE_DEFINITIONS = {
+            SOURCE:   { type: 'SOURCE',   ports: [false, false, true, false], res: 0 },
+            TARGET:   { type: 'TARGET',   ports: [true, false, false, false], res: 0 },
+            STRAIGHT: { type: 'STRAIGHT', ports: [true, false, true, false], res: 0 },
+            CORNER:   { type: 'CORNER',   ports: [false, true, true, false], res: 0 },
+            TEE:      { type: 'TEE',      ports: [true, true, true, false], res: 0 },
+            CROSS:    { type: 'CROSS',    ports: [true, true, true, true], res: 0 },
+            RESISTOR: { type: 'RESISTOR', ports: [false, true, false, true], res: 150 },
+            DIODE:    { type: 'DIODE',    ports: [false, true, false, true], res: 10 },
+            CAPACITOR:{ type: 'CAPACITOR',ports: [false, true, false, true], res: 25 },
+            GATE:     { type: 'GATE',     ports: [true, true, true, false], res: 50 }
+        };
+
+        // Campaign Stages Narrative Configuration
+        const STAGES = [
+            {
+                stage: 1,
+                name: "EMERGENCY POWER & COCKPIT",
+                targetSubsystem: "Cockpit HUD",
+                icon: "📺",
+                speaker: "Alex Vance • Chief Engineer",
+                avatar: "👨‍🔧",
+                dialogue: "EMP blast fried our main power line! Re-route direct current to bring the emergency HUD and comms online!",
+                victoryText: "Cockpit HUD and emergency distress comms are fully powered! Ship sensors online."
+            },
+            {
+                stage: 2,
+                name: "LIFE SUPPORT & OXYGEN SCRUBBER",
+                targetSubsystem: "Oxygen Scrubber Fan",
+                icon: "💨",
+                speaker: "AURA AI (Low Power)",
+                avatar: "🤖",
+                dialogue: "Warning: Oxygen filtration offline. Routing power through series resistors required to prevent motor burnout.",
+                victoryText: "Scrubber turbines engaged! Carbon dioxide levels declining across all crew decks."
+            },
+            {
+                stage: 3,
+                name: "AI CORE 'AURA' REBOOT",
+                targetSubsystem: "AURA Neural Matrix",
+                icon: "🧠",
+                speaker: "Alex Vance • Chief Engineer",
+                avatar: "👨‍🔧",
+                dialogue: "AURA's logic core is fragmented. We need to pass current through the primary IC logic gates to sync her memory matrix!",
+                victoryText: "AURA Neural Matrix rebooted! Ship navigation systems and diagnostic telemetry online."
+            },
+            {
+                stage: 4,
+                name: "SHIELD GENERATOR & DEFENSE",
+                targetSubsystem: "Deflector Shield Relay",
+                icon: "🛡️",
+                speaker: "AURA AI (Online)",
+                avatar: "🤖",
+                dialogue: "Alert! Space debris incoming from the uncharted nebula. Direct high-voltage pulse to energize deflector shields!",
+                victoryText: "Deflector shields charged to 100%! Hull integrity stabilized against orbital debris."
+            },
+            {
+                stage: 5,
+                name: "HYPERDRIVE IGNITION",
+                targetSubsystem: "Hyperdrive Engine Core",
+                icon: "🚀",
+                speaker: "Alex Vance • Chief Engineer",
+                avatar: "👨‍🔧",
+                dialogue: "Final step! Complete the primary energy loop through capacitors and power diodes to initiate warp jump!",
+                victoryText: "Hyperdrive ignited! SS Prometheus successfully jumped clear of the hazardous nebula!"
+            }
+        ];
+
+        // Game State Variables
+        let currentStageIndex = 0;
+        let gridSize = 6;
+        let board = [];
+        let moveCount = 0;
+        let isMuted = false;
+        let isLevelComplete = false;
+        let animFrameId = null;
+        let animTime = 0;
+
+        // DOM Handles
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const canvasContainer = document.querySelector('.canvas-aspect-container');
+        const gridSizeSelect = document.getElementById('grid-size-select');
+        const statMoves = document.getElementById('stat-moves');
+        const statCurrent = document.getElementById('stat-current');
+        const statStatus = document.getElementById('stat-status');
+        const statusCard = document.getElementById('status-card');
+        const muteBtn = document.getElementById('mute-btn');
+        const solveBtn = document.getElementById('solve-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const victoryModal = document.getElementById('victory-modal');
+        const nextBtn = document.getElementById('next-btn');
+
+        const speakerName = document.getElementById('speaker-name');
+        const stageBadge = document.getElementById('stage-badge');
+        const terminalDialogue = document.getElementById('terminal-dialogue');
+        const avatarIcon = document.getElementById('avatar-icon');
+        const targetSubsystemName = document.getElementById('target-subsystem-name');
+
+        /**
+         * Synthesized Sound FX Engine
+         */
+        class AudioSynth {
+            constructor() { this.ctx = null; }
+            init() {
+                if (!this.ctx) {
+                    const AC = window.AudioContext || window.webkitAudioContext;
+                    if (AC) this.ctx = new AC();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+            }
+            playRotate() {
+                if (isMuted) return;
+                this.init();
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(240, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.06);
+                gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.06);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.06);
+            }
+            playPower() {
+                if (isMuted) return;
+                this.init();
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(480, this.ctx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.2);
+            }
+            playVictory() {
+                if (isMuted) return;
+                this.init();
+                if (!this.ctx) return;
+                const freqs = [330, 440, 554.37, 659.25];
+                freqs.forEach((f, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.value = f;
+                    const st = this.ctx.currentTime + (i * 0.09);
+                    gain.gain.setValueAtTime(0.15, st);
+                    gain.gain.exponentialRampToValueAtTime(0.001, st + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(st);
+                    osc.stop(st + 0.3);
+                });
+            }
+        }
+        const sound = new AudioSynth();
+
+        /**
+         * Responsive Canvas Setup
+         */
+        function resizeCanvas() {
+            const rect = canvasContainer.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            const size = Math.floor(rect.width);
+
+            canvas.width = size * dpr;
+            canvas.height = size * dpr;
+
+            ctx.resetTransform();
+            ctx.scale(dpr, dpr);
+
+            drawBoard();
+        }
+
+        function getRotatedPorts(basePorts, rotation) {
+            let p = [false, false, false, false];
+            for (let i = 0; i < 4; i++) {
+                p[(i + rotation) % 4] = basePorts[i];
+            }
+            return p;
+        }
+
+        /**
+         * Board Generator & Solvable DFS Pathing
+         */
+        function buildSolvableBoard() {
+            moveCount = 0;
+            isLevelComplete = false;
+            statMoves.textContent = '0';
+            victoryModal.classList.add('hidden');
+
+            const currentStage = STAGES[currentStageIndex];
+            speakerName.textContent = currentStage.speaker;
+            stageBadge.textContent = `STAGE ${currentStage.stage}/5`;
+            terminalDialogue.textContent = `"${currentStage.dialogue}"`;
+            avatarIcon.textContent = currentStage.avatar;
+            targetSubsystemName.textContent = currentStage.targetSubsystem;
+
+            board = Array.from({ length: gridSize }, (_, r) => 
+                Array.from({ length: gridSize }, (_, c) => ({
+                    r, c, type: 'STRAIGHT', rotation: 0, solutionRotation: 0, isPowered: false, res: 0
+                }))
+            );
+
+            // Source (Top Left) and Target (Bottom Right)
+            board[0][0] = { r: 0, c: 0, type: 'SOURCE', rotation: 1, solutionRotation: 1, isPowered: true, res: 0 };
+            board[gridSize - 1][gridSize - 1] = { r: gridSize - 1, c: gridSize - 1, type: 'TARGET', rotation: 3, solutionRotation: 3, isPowered: false, res: 0 };
+
+            const solutionPath = findRandomDFSPath(0, 0, gridSize - 1, gridSize - 1);
+
+            // Populate solution path
+            for (let i = 0; i < solutionPath.length; i++) {
+                const curr = solutionPath[i];
+                const prev = i > 0 ? solutionPath[i - 1] : null;
+                const next = i < solutionPath.length - 1 ? solutionPath[i + 1] : null;
+
+                if (i === 0) {
+                    const dirNext = getDirection(curr, next);
+                    const rot = (dirNext - BOTTOM + 4) % 4;
+                    board[curr.r][curr.c].rotation = rot;
+                    board[curr.r][curr.c].solutionRotation = rot;
+                } else if (i === solutionPath.length - 1) {
+                    const dirPrev = getDirection(curr, prev);
+                    const rot = (dirPrev - TOP + 4) % 4;
+                    board[curr.r][curr.c].rotation = rot;
+                    board[curr.r][curr.c].solutionRotation = rot;
+                } else {
+                    const dirFromPrev = getDirection(curr, prev);
+                    const dirToNext = getDirection(curr, next);
+
+                    let type = 'STRAIGHT';
+                    let rot = 0;
+
+                    if (dirFromPrev === OPPOSITE[dirToNext]) {
+                        const rand = Math.random();
+                        if (currentStageIndex === 1 && rand < 0.5) type = 'RESISTOR';
+                        else if (currentStageIndex === 2 && rand < 0.5) type = 'GATE';
+                        else if (currentStageIndex === 3 && rand < 0.5) type = 'CAPACITOR';
+                        else if (currentStageIndex === 4 && rand < 0.4) type = 'DIODE';
+                        else if (rand < 0.25) type = 'RESISTOR';
+
+                        if (type === 'DIODE') {
+                            if (dirToNext === RIGHT) rot = 0;
+                            else if (dirToNext === BOTTOM) rot = 1;
+                            else if (dirToNext === LEFT) rot = 2;
+                            else if (dirToNext === TOP) rot = 3;
+                        } else {
+                            rot = (dirToNext === RIGHT || dirToNext === LEFT) ? 0 : 1;
+                        }
+                    } else {
+                        type = 'CORNER';
+                        for (let rTest = 0; rTest < 4; rTest++) {
+                            const p = getRotatedPorts(TILE_DEFINITIONS.CORNER.ports, rTest);
+                            if (p[dirFromPrev] && p[dirToNext]) { rot = rTest; break; }
+                        }
+                    }
+
+                    board[curr.r][curr.c] = {
+                        r: curr.r, c: curr.c,
+                        type, rotation: rot, solutionRotation: rot,
+                        isPowered: false, res: TILE_DEFINITIONS[type].res
+                    };
+                }
+            }
+
+            // Fill off-path cells & scramble non-fixed rotations
+            const fillerTypes = ['STRAIGHT', 'CORNER', 'TEE', 'CROSS', 'RESISTOR', 'DIODE', 'CAPACITOR'];
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) {
+                    const isPathTile = solutionPath.some(p => p.r === r && p.c === c);
+                    if (!isPathTile) {
+                        const randomType = fillerTypes[Math.floor(Math.random() * fillerTypes.length)];
+                        const randomRot = Math.floor(Math.random() * 4);
+                        board[r][c] = {
+                            r, c, type: randomType, rotation: randomRot, solutionRotation: randomRot,
+                            isPowered: false, res: TILE_DEFINITIONS[randomType].res
+                        };
+                    } else if (!(r === 0 && c === 0) && !(r === gridSize - 1 && c === gridSize - 1)) {
+                        board[r][c].rotation = Math.floor(Math.random() * 4);
+                    }
+                }
+            }
+
+            evaluateCircuitPower();
+            drawBoard();
+        }
+
+        function findRandomDFSPath(sr, sc, tr, tc) {
+            const visited = Array.from({ length: gridSize }, () => Array(gridSize).fill(false));
+            const path = [];
+            function dfs(r, c) {
+                visited[r][c] = true;
+                path.push({ r, c });
+                if (r === tr && c === tc) return true;
+                const dirs = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
+                for (const d of dirs) {
+                    const nr = r + OFFSETS[d][1];
+                    const nc = c + OFFSETS[d][0];
+                    if (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize && !visited[nr][nc]) {
+                        if (dfs(nr, nc)) return true;
+                    }
+                }
+                path.pop();
+                return false;
+            }
+            dfs(sr, sc);
+            return path;
+        }
+
+        function getDirection(from, to) {
+            const dx = to.c - from.c;
+            const dy = to.r - from.r;
+            if (dx === 1) return RIGHT;
+            if (dx === -1) return LEFT;
+            if (dy === 1) return BOTTOM;
+            if (dy === -1) return TOP;
+            return TOP;
+        }
+
+        /**
+         * Power Flow & Diode Evaluation
+         */
+        function evaluateCircuitPower() {
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) board[r][c].isPowered = false;
+            }
+
+            const queue = [{ r: 0, c: 0 }];
+            board[0][0].isPowered = true;
+            let targetReached = false;
+            const poweredTiles = new Set(['0,0']);
+
+            while (queue.length > 0) {
+                const curr = queue.shift();
+                const tile = board[curr.r][curr.c];
+                const currentPorts = getRotatedPorts(TILE_DEFINITIONS[tile.type].ports, tile.rotation);
+
+                for (let dir = 0; dir < 4; dir++) {
+                    if (!currentPorts[dir]) continue;
+                    const nr = curr.r + OFFSETS[dir][1];
+                    const nc = curr.c + OFFSETS[dir][0];
+                    if (nr < 0 || nr >= gridSize || nc < 0 || nc >= gridSize) continue;
+
+                    const neighbor = board[nr][nc];
+                    const neighborPorts = getRotatedPorts(TILE_DEFINITIONS[neighbor.type].ports, neighbor.rotation);
+                    const incomingDir = OPPOSITE[dir];
+
+                    if (!neighborPorts[incomingDir]) continue;
+
+                    // Diode Polarity Constraint
+                    if (tile.type === 'DIODE') {
+                        const cathodePort = (RIGHT + tile.rotation) % 4;
+                        if (dir !== cathodePort) continue;
+                    }
+                    if (neighbor.type === 'DIODE') {
+                        const neighborAnodePort = (LEFT + neighbor.rotation) % 4;
+                        if (incomingDir !== neighborAnodePort) continue;
+                    }
+
+                    if (!neighbor.isPowered) {
+                        neighbor.isPowered = true;
+                        queue.push({ r: nr, c: nc });
+                        poweredTiles.add(`${nr},${nc}`);
+                        if (neighbor.type === 'TARGET') targetReached = true;
+                    }
+                }
+            }
+
+            if (targetReached) {
+                let loopRes = 0;
+                poweredTiles.forEach(coord => {
+                    const [r, c] = coord.split(',').map(Number);
+                    loopRes += board[r][c].res;
+                });
+                if (loopRes === 0) loopRes = 10;
+                const currentmA = (5.0 / loopRes) * 1000;
+
+                statCurrent.textContent = `${currentmA.toFixed(1)} mA`;
+                statStatus.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> ONLINE`;
+                statStatus.className = 'text-xs font-bold text-emerald-400 mt-0.5 flex items-center gap-1 glow-emerald';
+                statusCard.className = 'bg-emerald-950/40 p-2 rounded-lg border border-emerald-500/40 flex flex-col justify-center items-center';
+
+                if (!isLevelComplete) {
+                    isLevelComplete = true;
+                    sound.playPower();
+                    setTimeout(() => {
+                        sound.playVictory();
+                        const cs = STAGES[currentStageIndex];
+                        document.getElementById('modal-title').textContent = `${cs.targetSubsystem} Powered!`;
+                        document.getElementById('modal-desc').textContent = cs.victoryText;
+                        document.getElementById('modal-subsystem-icon').textContent = cs.icon;
+                        document.getElementById('modal-moves').textContent = moveCount;
+                        document.getElementById('modal-res').textContent = `${loopRes} Ω`;
+                        document.getElementById('modal-curr').textContent = `${currentmA.toFixed(1)} mA`;
+                        victoryModal.classList.remove('hidden');
+                    }, 300);
+                }
+            } else {
+                statCurrent.textContent = '0.0 mA';
+                statStatus.innerHTML = `<span id="status-dot" class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> OFFLINE`;
+                statStatus.className = 'text-xs font-bold text-rose-400 mt-0.5 flex items-center gap-1';
+                statusCard.className = 'bg-slate-900/80 p-2 rounded-lg border border-slate-800/80 flex flex-col justify-center items-center';
+            }
+        }
+
+        /**
+         * Canvas Component Graphic Renderer
+         */
+        function drawBoard() {
+            const rect = canvasContainer.getBoundingClientRect();
+            const width = rect.width;
+            const cellSize = width / gridSize;
+
+            ctx.clearRect(0, 0, width, width);
+            animTime += 0.05;
+
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) {
+                    const x = c * cellSize;
+                    const y = r * cellSize;
+                    const tile = board[r][c];
+
+                    ctx.save();
+                    ctx.translate(x, y);
+
+                    // Tile Backing Board
+                    ctx.fillStyle = tile.isPowered ? 'rgba(15, 23, 42, 0.95)' : 'rgba(15, 23, 42, 0.7)';
+                    ctx.strokeStyle = tile.isPowered 
+                        ? (tile.type === 'SOURCE' ? '#ef4444' : (tile.type === 'TARGET' ? '#22c55e' : '#06b6d4')) 
+                        : 'rgba(51, 65, 85, 0.5)';
+                    ctx.lineWidth = tile.isPowered ? 2 : 1;
+
+                    ctx.beginPath();
+                    ctx.roundRect(2.5, 2.5, cellSize - 5, cellSize - 5, Math.max(3, cellSize * 0.1));
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Component Drawing & Rotation
+                    ctx.translate(cellSize / 2, cellSize / 2);
+                    ctx.rotate((tile.rotation * 90 * Math.PI) / 180);
+
+                    drawTileGraphics(tile, cellSize);
+
+                    ctx.restore();
+                }
+            }
+
+            if (isLevelComplete) {
+                animFrameId = requestAnimationFrame(drawBoard);
+            }
+        }
+
+        function drawTileGraphics(tile, cellSize) {
+            const h = cellSize / 2;
+            const wireWidth = Math.max(2.5, cellSize * 0.08);
+            const wireColor = tile.isPowered ? '#06b6d4' : '#475569';
+
+            ctx.lineWidth = wireWidth;
+            ctx.strokeStyle = wireColor;
+            ctx.fillStyle = wireColor;
+            ctx.lineCap = 'round';
+
+            if (tile.isPowered && tile.type !== 'SOURCE' && tile.type !== 'TARGET') {
+                ctx.shadowColor = '#06b6d4';
+                ctx.shadowBlur = 8;
+            }
+
+            switch (tile.type) {
+                case 'SOURCE':
+                    ctx.shadowColor = '#ef4444';
+                    ctx.shadowBlur = 10;
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.fillStyle = '#ef4444';
+
+                    ctx.beginPath();
+                    ctx.arc(0, 0, h * 0.45, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#ef4444';
+                    ctx.font = `bold ${Math.max(9, cellSize * 0.22)}px Orbitron`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('+5V', 0, 0);
+
+                    ctx.beginPath();
+                    ctx.moveTo(0, h * 0.45);
+                    ctx.lineTo(0, h - 3);
+                    ctx.stroke();
+                    break;
+
+                case 'TARGET':
+                    const cs = STAGES[currentStageIndex];
+                    const tColor = tile.isPowered ? '#22c55e' : '#64748b';
+                    if (tile.isPowered) {
+                        ctx.shadowColor = '#22c55e';
+                        ctx.shadowBlur = 12;
+                    }
+                    ctx.strokeStyle = tColor;
+                    ctx.fillStyle = tColor;
+
+                    ctx.beginPath();
+                    ctx.moveTo(0, -h + 3);
+                    ctx.lineTo(0, -h * 0.4);
+                    ctx.stroke();
+
+                    // Custom animated target machine icon
+                    ctx.save();
+                    if (tile.isPowered && currentStageIndex === 1) {
+                        ctx.rotate(animTime * 3); // Oxygen Scrubber Spinning Fan
+                    }
+
+                    ctx.beginPath();
+                    ctx.arc(0, 0, h * 0.45, 0, Math.PI * 2);
+                    ctx.fillStyle = tile.isPowered ? 'rgba(34, 197, 94, 0.25)' : 'rgba(100, 116, 139, 0.1)';
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.font = `${Math.max(12, cellSize * 0.32)}px Inter`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(cs.icon, 0, 0);
+                    ctx.restore();
+                    break;
+
+                case 'STRAIGHT':
+                    ctx.beginPath();
+                    ctx.moveTo(0, -h + 3);
+                    ctx.lineTo(0, h - 3);
+                    ctx.stroke();
+                    break;
+
+                case 'CORNER':
+                    ctx.beginPath();
+                    ctx.moveTo(0, h - 3);
+                    ctx.lineTo(0, 0);
+                    ctx.lineTo(h - 3, 0);
+                    ctx.stroke();
+                    break;
+
+                case 'TEE':
+                    ctx.beginPath();
+                    ctx.moveTo(0, -h + 3);
+                    ctx.lineTo(0, h - 3);
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(h - 3, 0);
+                    ctx.stroke();
+                    break;
+
+                case 'CROSS':
+                    ctx.beginPath();
+                    ctx.moveTo(0, -h + 3);
+                    ctx.lineTo(0, h - 3);
+                    ctx.moveTo(-h + 3, 0);
+                    ctx.lineTo(h - 3, 0);
+                    ctx.stroke();
+                    break;
+
+                case 'RESISTOR':
+                    const rColor = tile.isPowered ? '#f59e0b' : '#64748b';
+                    if (tile.isPowered) { ctx.shadowColor = '#f59e0b'; ctx.shadowBlur = 8; }
+                    ctx.strokeStyle = rColor;
+
+                    ctx.beginPath();
+                    ctx.moveTo(-h + 3, 0);
+                    ctx.lineTo(-h * 0.4, 0);
+                    const seg = (h * 0.8) / 4;
+                    ctx.lineTo(-h * 0.4 + seg * 0.5, -h * 0.18);
+                    ctx.lineTo(-h * 0.4 + seg * 1.5, h * 0.18);
+                    ctx.lineTo(-h * 0.4 + seg * 2.5, -h * 0.18);
+                    ctx.lineTo(-h * 0.4 + seg * 3.5, h * 0.18);
+                    ctx.lineTo(h * 0.4, 0);
+                    ctx.lineTo(h - 3, 0);
+                    ctx.stroke();
+                    break;
+
+                case 'DIODE':
+                    const dColor = tile.isPowered ? '#f43f5e' : '#64748b';
+                    if (tile.isPowered) { ctx.shadowColor = '#f43f5e'; ctx.shadowBlur = 8; }
+                    ctx.strokeStyle = dColor;
+                    ctx.fillStyle = dColor;
+
+                    ctx.beginPath();
+                    ctx.moveTo(-h + 3, 0); ctx.lineTo(-h * 0.2, 0); ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(-h * 0.2, -h * 0.22);
+                    ctx.lineTo(-h * 0.2, h * 0.22);
+                    ctx.lineTo(h * 0.2, 0);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.beginPath();
+                    ctx.moveTo(h * 0.2, -h * 0.25);
+                    ctx.lineTo(h * 0.2, h * 0.25);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(h * 0.2, 0); ctx.lineTo(h - 3, 0); ctx.stroke();
+                    break;
+
+                case 'CAPACITOR':
+                    const cColor = tile.isPowered ? '#a855f7' : '#64748b';
+                    if (tile.isPowered) { ctx.shadowColor = '#a855f7'; ctx.shadowBlur = 8; }
+                    ctx.strokeStyle = cColor;
+
+                    ctx.beginPath();
+                    ctx.moveTo(-h + 3, 0); ctx.lineTo(-h * 0.15, 0); ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(h * 0.15, 0); ctx.lineTo(h - 3, 0); ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(-h * 0.15, -h * 0.25); ctx.lineTo(-h * 0.15, h * 0.25);
+                    ctx.moveTo(h * 0.15, -h * 0.25); ctx.lineTo(h * 0.15, h * 0.25);
+                    ctx.stroke();
+                    break;
+
+                case 'GATE':
+                    const gColor = tile.isPowered ? '#3b82f6' : '#64748b';
+                    if (tile.isPowered) { ctx.shadowColor = '#3b82f6'; ctx.shadowBlur = 8; }
+                    ctx.strokeStyle = gColor;
+
+                    ctx.beginPath();
+                    ctx.moveTo(-h + 3, 0); ctx.lineTo(-h * 0.3, 0);
+                    ctx.moveTo(0, -h + 3); ctx.lineTo(0, -h * 0.3);
+                    ctx.moveTo(0, h - 3); ctx.lineTo(0, h * 0.3);
+                    ctx.stroke();
+
+                    ctx.fillStyle = tile.isPowered ? 'rgba(59, 130, 246, 0.25)' : 'rgba(100, 116, 139, 0.1)';
+                    ctx.beginPath();
+                    ctx.roundRect(-h * 0.3, -h * 0.3, h * 0.6, h * 0.6, 3);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.fillStyle = gColor;
+                    ctx.font = `bold ${Math.max(7, cellSize * 0.14)}px Fira Code`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('AND', 0, 0);
+                    break;
+            }
+        }
+
+        /**
+         * User Interactions
+         */
+        function handleCanvasClick(e) {
+            e.preventDefault();
+            const rect = canvasContainer.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+            if (!clientX || !clientY) return;
+
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            const cellSize = rect.width / gridSize;
+            const c = Math.floor(x / cellSize);
+            const r = Math.floor(y / cellSize);
+
+            if (r >= 0 && r < gridSize && c >= 0 && c < gridSize) {
+                board[r][c].rotation = (board[r][c].rotation + 1) % 4;
+                moveCount++;
+                statMoves.textContent = moveCount;
+                sound.playRotate();
+                evaluateCircuitPower();
+                drawBoard();
+            }
+        }
+
+        canvas.addEventListener('click', handleCanvasClick);
+        canvas.addEventListener('touchstart', (e) => { handleCanvasClick(e); }, { passive: false });
+
+        gridSizeSelect.addEventListener('change', (e) => {
+            gridSize = parseInt(e.target.value);
+            buildSolvableBoard();
+            resizeCanvas();
+        });
+
+        restartBtn.addEventListener('click', () => {
+            buildSolvableBoard();
+        });
+
+        solveBtn.addEventListener('click', () => {
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) {
+                    board[r][c].rotation = board[r][c].solutionRotation;
+                }
+            }
+            evaluateCircuitPower();
+            drawBoard();
+        });
+
+        nextBtn.addEventListener('click', () => {
+            currentStageIndex = (currentStageIndex + 1) % STAGES.length;
+            buildSolvableBoard();
+        });
+
+        muteBtn.addEventListener('click', () => {
+            isMuted = !isMuted;
+            muteBtn.textContent = isMuted ? '🔇' : '🔊';
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        window.onload = () => {
+            buildSolvableBoard();
+            resizeCanvas();
+        };
+
+        // Service Worker Registration for PWA Support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('ServiceWorker registered:', reg))
+                    .catch(err => console.error('ServiceWorker registration failed:', err));
+            });
+        }
+    </script>
+</body>
+</html>
